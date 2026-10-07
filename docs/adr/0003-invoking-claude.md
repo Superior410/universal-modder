@@ -1,6 +1,6 @@
 # ADR 0003: How Studio invokes Claude
 
-- **Status:** Proposed (accept at the Epic 0 exit gate)
+- **Status:** Accepted (2026-10-07, Epic 0 exit gate)
 - **Issue:** #5 (Epic 0, task 0.5)
 - **Brief:** §14, §18, §24, §27, §52, §73, §88, §89, §142. **Audit:** D3, D7. **Plan:** `docs/studio/CLOUD_ISOLATION.md`.
 - **Sources** (Claude Code docs, read 2026-10-07): [CLI reference](https://code.claude.com/docs/en/cli-reference), [Run Claude Code programmatically](https://code.claude.com/docs/en/headless), [Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview), [Permissions](https://code.claude.com/docs/en/permissions), [Skills](https://code.claude.com/docs/en/skills).
@@ -20,7 +20,7 @@ The user wants Studio to use their Claude subscription, not an API key. Three fa
 
 ### A. Drive the user's installed Claude Code CLI as a subprocess (recommended)
 
-Studio runs `claude -p … --output-format stream-json` with the user's own installation and login. Studio **never handles, stores or offers** a login. Before the first call it checks `claude auth status`, which reports `authMethod` (`claude.ai`, `api_key`, …), and asks the user to sign in to Claude Code themselves if needed.
+Studio runs `claude -p … --output-format stream-json` with the user's own installation and login. **Studio orchestrates Claude Code. It is not a credential manager:** it never handles, stores, copies or offers a login, token or API key. Before the first call it checks `claude auth status`, which reports `authMethod` (`claude.ai`, `api_key`, …), and asks the user to sign in to Claude Code themselves if needed.
 
 - Running `claude -p` from a script is the documented use of headless mode.
 - Fine-grained control comes from flags: MCP (`--strict-mcp-config`, `--mcp-config`), tool rules (`--allowedTools`, `--disallowedTools`), permission routing (`--permission-prompt-tool`, `--permission-prompts`), prompts (`--append-system-prompt-file`), sessions (`--session-id`, `--resume`), structured output (`--json-schema`), limits (`--max-turns`, `--max-budget-usd`), and live events (`stream-json`, `system/init`, `system/api_retry`).
@@ -50,9 +50,9 @@ claude -p "<task prompt>"
   --permission-prompt-tool mcp__studio__approve
   --append-system-prompt-file <studio>/runtime/studio-rules.md
   --add-dir <studio>/runtime/toolkit-skills
-  --max-turns <N>
+  --max-turns 40                  # starting cap (user decision); configurable per project
   [--json-schema <schema>]        # for structured steps, e.g. intent → graph diff
-  [--model <user's choice>]
+  --model sonnet                  # default: the Sonnet alias, never a pinned version; configurable
 ```
 
 `<studio>/runtime/mcp.json` lists exactly one server: **`studio`**, a local stdio MCP server run by the Python core. It gives Claude typed access to the graph and the toolkit, and it is the permission host.
@@ -92,7 +92,8 @@ No mode turns off the confirmation class. The graph is always written by the **c
 ### 5. Progress, cost, limits
 
 - **Live progress:** the core forwards `stream-json` events to the UI as "Claude is reading X / editing Y / running tests". `system/api_retry` events with `rate_limit` show as "waiting for your Claude usage limit".
-- **Cost:** with a subscription there's no per-token bill. `total_cost_usd` is still recorded as the docs' client-side **estimate**, labelled as such, so heavy changes are visible. `--max-turns` caps every run, and a transaction can be cancelled from the UI (SIGINT first, then terminate).
+- **Cost:** with a subscription there's no per-token bill. `total_cost_usd` is still recorded as the docs' client-side **estimate**, labelled as such, so heavy changes are visible. `--max-turns` caps every run (**40** to start), and a transaction can be cancelled from the UI (SIGINT first, then terminate).
+- **Model:** the default is the `sonnet` alias, so it follows whatever Sonnet the user's Claude Code resolves it to. It is a setting (global, overridable per project), never a hard-coded version string.
 - **Version floor:** Studio checks `claude --version` at start and requires a version that has every flag used here (`--permission-prompts` needs v2.1.259 or later). It reads the `capabilities` array in `system/init` where available.
 
 ### 6. Offline or not signed in
@@ -109,7 +110,7 @@ A graph edit made offline is saved and shows **"implementation pending"**. When 
 - **If Studio is ever distributed to other people:** each user still brings their own Claude Code installation and login, and Studio never offers a login. Offering subscription login as a feature of a distributed product would need Anthropic's approval (fact 3). Otherwise Studio supports an **API-key mode**: the user's own `ANTHROPIC_API_KEY` or `apiKeyHelper`. That mode can also use `--bare` and the Agent SDK. The session builder is written so the auth mode is one setting.
 - Epic 4 builds the `studio` MCP server (stdio, run by the core) and the approval tool before any code-generating session runs.
 
-## Open questions for the user
+## Resolved questions (2026-10-07)
 
-1. Model default: whatever your Claude Code is set to, or pin one per project?
-2. A per-transaction turn cap: start at 40 turns and adjust?
+1. Model default: the `sonnet` alias, configurable, not pinned to a version.
+2. Turn cap: 40 per transaction to start, configurable per project.
