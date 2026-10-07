@@ -1,6 +1,6 @@
 # ADR 0001: Repository layout
 
-- **Status:** Proposed (accept at the Epic 0 exit gate)
+- **Status:** Accepted (2026-10-07, Epic 0 exit gate)
 - **Issue:** #3 (Epic 0, task 0.3)
 - **Brief:** §136, §137, §138. **Audit:** §2.7, §8, §10, decisions D2, D8, D11.
 
@@ -57,18 +57,18 @@ This is a variant of A. The submodule SHA is the pin. It's rejected because subm
 
 ## Decision
 
-**Option A: a companion repository**, `universal-mashup-studio`, with this fork kept as a near-mirror of upstream plus `FORK_CHANGES.md`.
+**Option A: a companion repository**, `universal-mashup-studio` (**private for now**), with this fork kept as a near-mirror of upstream plus `FORK_CHANGES.md`. `universal-modder` stays a **pinned dependency**; it is never merged into Studio.
 
 Until the new repo exists, Epic 0 documents stay in this fork under `docs/` and move with the first Studio commit, keeping their history in the move commit's message.
 
 ## Consequences
 
-- The user creates an empty repository (suggested: `Superior410/universal-mashup-studio`, private or public as they prefer) and adds it to the session. Epic 1 starts there.
+- The user creates the empty private repository `Superior410/universal-mashup-studio` and adds it to the session. Epic 1 starts there.
 - The fork's `docs/adr/`, `docs/studio/` and the three root Studio documents move to the new repo. The fork's `main` then returns to upstream plus `FORK_CHANGES.md`.
 - The toolkit is invoked as `uv run --project <toolkit> python -m um <group> …` (works on native Windows without bash), with `FAL_KEY` removed from the environment (0.2).
-- Project data (§44) lives **outside both repos**, in a user-chosen projects folder (default `Documents\UniversalMashupProjects`). Studio's own state lives under `%LOCALAPPDATA%\UniversalMashupStudio`. That name is deliberately different from the old prototype's `MashupStudio` (D11), so the two can't be confused or merged by accident.
+- Project data (§44) lives **outside both repos**. Default projects folder: `%USERPROFILE%\UniversalMashupStudio\Projects` on Windows, and `~/UniversalMashupStudio/Projects` elsewhere; the user can change it. Studio's machine-local state (caches, the managed toolkit clone, resolved install paths) lives under `%LOCALAPPDATA%\UniversalMashupStudio` (`~/.local/share/UniversalMashupStudio` on Linux, `~/Library/Application Support/UniversalMashupStudio` on macOS). Both names differ from the old prototype's `MashupStudio` folder (D11), so the two can't be confused or merged by accident.
 
-## Open questions for the user
+## Resolved questions (2026-10-07)
 
-1. The new repository's name and visibility (public like the toolkit, or private while it's early).
-2. Should the projects folder default to `Documents\UniversalMashupProjects` (§44's name) or somewhere you prefer?
+1. Repository: `universal-mashup-studio`, private for now.
+2. Default projects folder: `%USERPROFILE%\UniversalMashupStudio\Projects` on Windows, the user-home equivalent elsewhere.
