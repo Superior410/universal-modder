@@ -247,10 +247,29 @@ Grouped by the epic that owns it:
 |---|---|---|
 | D1 | **Don't assume more exists than the code shows; build what is needed.** | Runtime pieces the brief attributes to the repository (bridge/IPC, watchdog, launcher, process manager, strategy implementations beyond docs) are planned as net-new Studio work, using the examples only as reference designs. |
 | D2 | **Call the toolkit as a separate command-line process.** | `UniversalModderAdapter` (Epic 3.1) runs `bin/um …` as a subprocess, using `--json` where it exists and parsing stdout or exit codes where it doesn't. Studio never imports `um` in-process, so `die()`/`sys.exit()` can't take the core down. Upstream structured-output PRs (e.g. `publish check --json`) are optional improvements, not prerequisites. |
-| D3 | **fal: isolate through configuration (§5), no upstream deletion.** | Studio-launched Claude sessions get an MCP config without fal and a skill set without `fal-assets`; the adapter doesn't expose `um fal`. Details in issue 0.2. |
+| D3 | **fal is excluded from Studio entirely** (not an opt-in), isolated through configuration (§5), with no upstream deletion. | Studio-launched Claude sessions get an MCP config without fal and a skill set without `fal-assets`; the adapter doesn't expose `um fal`; Studio works with no `FAL_KEY`. Details in issue 0.2. |
 | D4 | **Any modded Valve/Steam game is launched with `-insecure`, always.** | The launcher adds `-insecure` for every Source / Source 2 game and **refuses to launch** a modded Valve game without it; it isn't a user-toggleable setting. This covers L4D2. `-insecure` is a Valve-engine flag. Steam games on other engines don't have it; for those, the existing rules apply (offline, single-player or a user-run server; never inject past anti-cheat). |
 | D5 | **Minecraft Java is discovered from the official launcher folder** (`%APPDATA%\.minecraft` on Windows), which may hold several installed versions. | Studio discovery reads `launcher_profiles.json` (installations: name, `lastVersionId`, `gameDir`) and `versions/<id>/<id>.json`, and lists each version or installation as a separate selectable donor. One project pins one exact version + loader + API triple. |
 | D6 | **Game build versions are read locally first; AI is only a fallback.** | See below. |
+| D7 | **Studio's in-app Claude uses the user's Claude subscription** (Claude Code signed in with their account), not an API key. | ADR 0.5 designs around a signed-in Claude Code session driven by the app. |
+| D8 | **Repository layout is decided in ADR 0.3**, with no preference given up front. | ADR 0.3 compares a companion repo with a folder inside the fork. |
+
+### What the user's machine actually has (read-only check, 2026-10-07)
+
+`%APPDATA%\.minecraft` (official launcher, **Microsoft Store edition**: `launcher_*_microsoft_store.*` files):
+- **3 launcher installations** in `launcher_profiles.json`:
+  - "Mashup: My mash-up": version `26.2`, its own `gameDir` under `%LOCALAPPDATA%\MashupStudio\minecraft\…`, custom JVM args;
+  - the default "Latest release" (resolves to `26.3`);
+  - "Latest snapshot" (resolves to `26.4-snapshot-3`).
+- **6 version folders** on disk: `26.2`, `26.3`, `26.3-pre-1`, `26.3-pre-2`, `26.4-snapshot-2`, `26.4-snapshot-3`.
+- **No Fabric or NeoForge versions installed** (no `fabric-loader-*` or `neoforge-*` folder in `versions/`).
+- `versions/26.3/26.3.json` reads locally as `id 26.3`, `type release`, `releaseTime 2026-09-15`, Java 25 (`java-runtime-epsilon`). This confirms D6 works for Minecraft with no network.
+
+Consequences:
+- Discovery lists **installations** (what the user picks in the launcher) and resolves each to a concrete version folder, because `latest-release`/`latest-snapshot` move when the launcher updates.
+- A Studio project pins a concrete id (e.g. `26.3`), never `latest-*`.
+- A loader install (Fabric) into this launcher is a §89 confirmation step. `minecraft.md` warns that `fabric-installer -launcher microsoft_store` fails on this launcher edition, so Studio adds the installation to `launcher_profiles.json` itself, after `um backup`.
+- **An earlier Studio prototype already wrote to this machine:** the "Mashup: My mash-up" installation points at a `MashupStudio` data folder, and `servers.dat.modforge-backup` sits beside `servers.dat`. Before Epic 2 defines project storage, ADR 0.3 needs to decide whether to reuse, migrate or ignore that folder.
 
 ### How build versions are read locally (D6)
 
