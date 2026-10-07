@@ -1,10 +1,12 @@
 # Cloud-dependency isolation plan
 
-Issue: #2 (Epic 0, task 0.2). Brief §3.1, §97, §98, §99, §135. Audit §5, decisions D2 and D3.
+**Status:** Approved (2026-10-07, Epic 0 exit gate). Issue: #2 (Epic 0, task 0.2). Brief §3.1, §97, §98, §99, §135. Audit §5, decisions D2 and D3.
 
 **Goal:** Universal Mashup Studio runs with no cloud generation service, and never needs `FAL_KEY`. Isolation is done by **configuration at the Studio boundary**. No upstream file in `universal-modder` is deleted or edited (§137), and the toolkit keeps working unchanged for people who use it outside Studio.
 
 **Decision (D3):** fal is **excluded** from Studio. It isn't an opt-in setting, and it is never a fallback (§98).
+
+**Scope:** the requirement is that *Studio* doesn't use cloud generation. It is **not** to remove fal from `universal-modder`. The toolkit's fal tooling stays intact and usable outside Studio; Studio just never invokes or exposes it.
 
 ---
 
