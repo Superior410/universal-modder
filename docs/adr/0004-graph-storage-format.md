@@ -1,6 +1,6 @@
 # ADR 0004: Graph storage format
 
-- **Status:** Proposed (accept at the Epic 0 exit gate)
+- **Status:** Accepted (2026-10-07, Epic 0 exit gate), with the comment-preservation requirement
 - **Issue:** #6 (Epic 0, task 0.6)
 - **Brief:** §7–§9, §13, §16, §19, §44, §74, §75, §83–§87, §107, §131. **Audit:** §8.3 (two route vocabularies).
 
@@ -11,15 +11,16 @@ The format must be human-readable, diffable, versionable, deterministic, easy fo
 Studio adds two requirements of its own:
 - **Claude never writes graph files directly** (ADR 0003 §4). The core writes them after validation. Humans may still hand-edit them, so they must stay pleasant to read.
 - A **semantic diff** by element id (Epic 1.9) matters more than a line diff.
+- **Comments and formatting are kept** (user decision). Comments are documentation, not semantic state: the schema controls meaning, and YAML is the human-editable representation of it. The save pipeline must not be designed to discard comments.
 
 ## Options
 
 | | YAML (canonical subset) | JSON | Hybrid (YAML for humans, JSON for machine files) | SQLite |
 |---|---|---|---|---|
-| Readable / hand-editable | best (comments allowed, but see below) | noisy for nested contracts | mixed | no |
+| Readable / hand-editable | best; comments kept (below) | noisy for nested contracts | mixed | no |
 | Deterministic output | yes, with a canonical writer | yes | yes | no (binary) |
 | Pitfalls | **implicit typing** (below) | none | two formats to maintain | rejected by §83 |
-| Already a dependency | PyYAML (toolkit) | stdlib | both | stdlib |
+| Library | ruamel.yaml (round-trip) for graph files | stdlib | both | stdlib |
 
 ### The YAML pitfall, measured
 
@@ -34,23 +35,45 @@ e: 0x10        → 16
 f: 2026-10-07  → datetime.date
 ```
 
-A loader with the implicit bool/int/float/timestamp resolvers removed reads all of these back **as strings**: `'no'`, `'on'`, `'1.20'`, `'26.3'`, `'0x10'`, `'2026-10-07'`. Studio uses that loader. Types then come **from the schema**, never from YAML's guessing.
+Studio's loader reads all of these back **as strings**: `'no'`, `'on'`, `'1.20'`, `'26.3'`, `'0x10'`, `'2026-10-07'`. Types then come **from the schema**, never from YAML's guessing.
+
+### Comment preservation, measured
+
+Prototype (ruamel.yaml 0.19.1, round-trip mode, with a resolver that makes every plain scalar a string, sketched in §1):
+
+| Check | Result |
+|---|---|
+| Load → save an unchanged file with comments, flow mappings, a double-quoted string, `1.20`, `no`, a date, `0x10`, an empty value | **byte-identical** |
+| Edit two values and insert a new key | comments, quoting and flow style elsewhere unchanged; only the edited lines differ |
+| Reload after the edit | `version` → `'1.21'`, `allow` → `'yes'`: still strings |
+
+So comment preservation and schema-authoritative types work together.
 
 ## Decision
 
 ### 1. Format
 
-- **YAML, restricted to a canonical subset:** block style, UTF-8, `\n` line ends, 2-space indent.
-- **No** anchors, aliases, tags, multi-document files, flow collections longer than one line, or comments in machine-written files. A human can add comments; on the next core save they are dropped, with a warning in the UI. Long-lived explanation belongs in `description` fields, not comments.
-- **Loader:** `yaml.SafeLoader` with the implicit bool/int/float/timestamp resolvers removed, so every scalar loads as a string.
-- **Schema:** Pydantic v2 models are the source of truth. JSON Schema is exported from them (`schemas/*.schema.json`) for editors and for Claude's `--json-schema` output. The models coerce strings to the declared types (`"true"` → bool, `"40"` → int); a version is always a string.
-- **Writer:** the core writes every file through one canonical serializer:
-  - mapping keys in **schema field order**, with unknown/extension keys after them, sorted;
-  - lists of elements sorted by `id`;
-  - order-meaningful lists (rule actions, sync pipeline steps) kept in their given order;
-  - strings quoted only when needed to round-trip as strings.
-  
-  Load → save of a canonical file is **byte-identical**. That is a test in Epic 1.9.
+- **YAML** for every graph and project file: UTF-8, `\n` line ends, 2-space indent, block style by default. Short flow mappings (`{surface: collision, need: required}`) are allowed where they read better.
+- **Not allowed** (the validator rejects them): anchors and aliases, custom tags, multi-document files. Comments, blank lines and quoting style are allowed anywhere and **preserved**.
+- **Library:** `ruamel.yaml` in round-trip mode. It keeps comments, key order, quoting and flow/block style. The toolkit keeps using PyYAML; Studio's core adds ruamel.yaml.
+- **Strict resolver:** every plain (unquoted) scalar resolves to a **string**, both when reading and when the writer decides whether a value needs quotes. YAML never guesses bool/int/float/null/date:
+
+  ```python
+  class StrictResolver(VersionedResolver):
+      def resolve(self, kind, value, implicit):
+          if kind is ScalarNode and implicit[0]:
+              return super().resolve(kind, "plain", implicit)   # the str tag
+          return super().resolve(kind, value, implicit)
+  ```
+
+- **Schema is authoritative:** Pydantic v2 models define every field's type. They coerce the loaded strings (`"true"` → bool, `"40"` → int, `""` → null where optional); a version is always a string. JSON Schema is exported from the models (`schemas/*.schema.json`) for editors and for Claude's `--json-schema` output.
+- **Save pipeline:** the core loads the file as a round-trip document **and** as validated models. A change is applied to the models, validated, then written back **into the existing document tree** (edit in place, insert, remove), and the tree is dumped.
+  - Unchanged content, including comments and formatting, is byte-identical. That is a test in Epic 1.9.
+  - New elements go in at their canonical position: lists of elements sorted by `id`, keys in schema field order. Existing hand ordering is left alone, so a hand-edited file isn't reordered behind the user's back.
+  - Removing an element removes the comment lines attached directly above it. Other comments stay. Removals are listed in the change's journal entry.
+  - Order-meaningful lists (rule actions, sync pipeline steps) keep their given order.
+- **`mashup fmt`** (opt-in) rewrites a file into canonical order and spacing, keeping comments. It never runs implicitly.
+- **Comments are not semantic state.** Nothing in Studio reads meaning from a comment. Explanations that Studio must show in the UI (§27) live in `description` and `provenance.rationale` fields. Claude's proposals may include a comment for humans, but Claude doesn't write the file itself (ADR 0003 §4).
 - JSON is still used for **machine-only** artifacts (recon output, test results, journal records, the context bundle), where nobody hand-edits and the toolkit already emits JSON.
 
 ### 2. File split (§44)
@@ -141,10 +164,11 @@ Generated code header (§75), with comment syntax per language:
 
 ## Consequences
 
-- Epic 1 implements: the Pydantic models, strict loader, canonical writer, validator, semantic diff, dependency engine and migrations, and exported JSON Schemas. The core's dependencies are PyYAML (shared with the toolkit) and Pydantic v2.
+- Epic 1 implements: the Pydantic models, the strict round-trip loader and the in-place save pipeline, `mashup fmt`, the validator, semantic diff, dependency engine and migrations, and exported JSON Schemas. The core's dependencies are ruamel.yaml and Pydantic v2.
+- Comment preservation gets dedicated tests: unchanged files are byte-identical; edits keep unrelated comments; removals report the comments they took with them.
 - A CI check fails if any file in `generated/` has a `generated_from` id that doesn't resolve (`IMPLEMENTATION_EPICS.md`, standing risks).
-- Hand edits to graph YAML are supported, but the next core save canonicalizes them, and their comments are dropped with a warning.
+- Hand edits to graph YAML, comments included, survive core saves.
 
-## Open questions for the user
+## Resolved questions (2026-10-07)
 
-1. Is dropping comments on save acceptable, given that `description` fields hold lasting notes? (The alternative, ruamel.yaml round-trip, keeps comments but makes byte-identical output much harder.)
+1. Comments: **preserved where practical.** The serializer is designed to keep them, the schema controls meaning, and comments are documentation only.
