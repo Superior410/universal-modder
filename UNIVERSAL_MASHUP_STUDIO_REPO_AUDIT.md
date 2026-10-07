@@ -253,6 +253,9 @@ Grouped by the epic that owns it:
 | D6 | **Game build versions are read locally first; AI is only a fallback.** | See below. |
 | D7 | **Studio's in-app Claude uses the user's Claude subscription** (Claude Code signed in with their account), not an API key. | ADR 0.5 designs around a signed-in Claude Code session driven by the app. |
 | D8 | **Repository layout is decided in ADR 0.3**, with no preference given up front. | ADR 0.3 compares a companion repo with a folder inside the fork. |
+| D9 | **Fabric/NeoForge installs are made through CurseForge**, which the user already has. | Discovery also reads CurseForge instances (`%USERPROFILE%\\curseforge\\minecraft\\Instances\\<name>\\minecraftinstance.json`: game version, loader, mod list). Creating an instance means driving the CurseForge app, so it sits behind the §89 input-driving confirmation. The project manifest pins the instance's exact version + loader + API triple. Studio never installs a loader into the vanilla `.minecraft` launcher itself. |
+| D10 | **Online safety for modded games.** Valve-engine games: always `-insecure` (D4). Non-Valve games: multiplayer only on a **private or LAN server the user runs**, and games that only run online need one too. | **Not adopted as asked: "disable anti-cheat".** Studio will not disable, remove or bypass anti-cheat. That is the toolkit's hard rule (`safety.md`, `AGENTS.md`) and brief §67. What Studio does: (1) launch through an **official** offline or anti-cheat-free mode when the publisher provides one; (2) route all modded multiplayer to a user-hosted private/LAN server using **official** server software or the game's own LAN mode; (3) if a game has neither, it can't be a **modded host**. It can still be a **donor** whose files are read offline (the guardrail in `mashup-mods`). Emulating a publisher's official online services is out of scope. |
+| D11 | **Studio starts fresh and ignores the earlier prototype's data folder** (`%LOCALAPPDATA%\\MashupStudio`). | No migration. Removing the folder is the user's call and is done by hand (Studio has no delete permission on the user's machine), after the prototype's active installs are dealt with (see below). |
 
 ### What the user's machine actually has (read-only check, 2026-10-07)
 
@@ -269,7 +272,13 @@ Consequences:
 - Discovery lists **installations** (what the user picks in the launcher) and resolves each to a concrete version folder, because `latest-release`/`latest-snapshot` move when the launcher updates.
 - A Studio project pins a concrete id (e.g. `26.3`), never `latest-*`.
 - A loader install (Fabric) into this launcher is a §89 confirmation step. `minecraft.md` warns that `fabric-installer -launcher microsoft_store` fails on this launcher edition, so Studio adds the installation to `launcher_profiles.json` itself, after `um backup`.
-- **An earlier Studio prototype already wrote to this machine:** the "Mashup: My mash-up" installation points at a `MashupStudio` data folder, and `servers.dat.modforge-backup` sits beside `servers.dat`. Before Epic 2 defines project storage, ADR 0.3 needs to decide whether to reuse, migrate or ignore that folder.
+- **An earlier Studio prototype already wrote to this machine** (decided: ignored, D11). Read-only findings that inform the new design:
+  - Its `installs/` journals record **3 installs still active**:
+    - a proof slice in the CurseForge instance "Homestead" (Minecraft 1.20.1): a datapack in a save, 3 resource packs, an `options.txt` edit;
+    - two "Left 4 Dead 2 in Minecraft" installs in `.minecraft`, each a resource pack + an `options.txt` entry + a new world ("Mashup World", "Mashup World (2)").
+  - Its L4D2 install (a `.vpk` in `left4dead2/addons`) is recorded as removed.
+  - The journals, backups and the standalone restore tool (`MashupRestore.bat/.py`) live inside that folder, so deleting it first would delete the only uninstall path.
+  - Ideas worth keeping in the new design, which reached the same conclusions independently: a per-install journal with sha256 per file and an uninstall report (Epic 2.4/2.5); a restore tool that works without the app; an evidence "ladder" with SIMULATED runs never counting (Epic 6.5); a Steam build id (`23990068`) as the L4D2 version (D6).
 
 ### How build versions are read locally (D6)
 
