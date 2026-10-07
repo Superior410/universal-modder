@@ -6,9 +6,8 @@ Issue: #1 (Epic 0, task 0.1). Brief: `UNIVERSAL_MASHUP_STUDIO_BRIEF.md` §139. B
 
 | | |
 |---|---|
-| Audited tree | `Superior410/universal-modder` @ `6c02e77` (fork of `rehan-remade/universal-modder`) |
-| Upstream | `rehan-remade/universal-modder` main @ `baff1e5`. The fork is **5 commits behind**, fast-forwardable. The difference is 4 new knowledge-base notes, a regenerated `knowledge/index.json` and a 4-line wording change in `skills/share-field-notes/SKILL.md`. No code differs, so every finding below holds for upstream too. |
-| Tests | `uv run --with pytest pytest -q tests`: **76 passed, 1 skipped**, 1 Pillow deprecation warning (`Image.getdata`, removed in Pillow 14, 2027-10). Run on Linux; Windows-only paths are not exercised. |
+| Audited tree | `Superior410/universal-modder` @ `baff1e5` (fork of `rehan-remade/universal-modder`), **in sync with upstream main**. The first pass was at `6c02e77`, 5 commits behind; the difference was knowledge-base notes only, so no finding changed. |
+| Tests | `uv run --with pytest pytest -q tests`: **76 passed, 1 skipped**, 1 Pillow deprecation warning (`Image.getdata`, removed in Pillow 14, 2027-10). `um kb check --index`: 74 notes pass. Run on Linux; Windows-only paths are not exercised. |
 | Method | Read every `um/*.py` module's command surface and library functions, both PowerShell tools, all 10 skills, the mashup skill and the Source and Minecraft playbooks in full, the agent and plugin configs, the hooks, CI, and the KB notes closest to the first vertical slice. File paths are cited for each claim. |
 
 Classification used throughout:
@@ -22,7 +21,7 @@ Classification used throughout:
 
 ## 1. Summary
 
-1. **The repository is a toolkit plus a body of knowledge, not a runtime.** It has an excellent recon CLI, Windows automation, backups, a publish lint and a 70-note knowledge base. The brief's mashup "strategies" (§11) exist here as **documentation** (`skills/mashup-mods/SKILL.md`, Patterns 1–5) and as **one-off example code** (`examples/minecraft-gta5-passthrough`). There is no reusable bridge, IPC, watchdog, launcher or process-manager library. The brief (§3.2, §11.3, §136) assumes "local runtime/bridge concepts" can be orchestrated. They exist only as concepts, so Epic 6 builds them from scratch, using the example as a reference design.
+1. **The repository is a toolkit plus a body of knowledge, not a runtime.** It has an excellent recon CLI, Windows automation, backups, a publish lint and a 74-note knowledge base. The brief's mashup "strategies" (§11) exist here as **documentation** (`skills/mashup-mods/SKILL.md`, Patterns 1–5) and as **one-off example code** (`examples/minecraft-gta5-passthrough`). There is no reusable bridge, IPC, watchdog, launcher or process-manager library. The brief (§3.2, §11.3, §136) assumes "local runtime/bridge concepts" can be orchestrated. They exist only as concepts, so Epic 6 builds them from scratch, using the example as a reference design.
 2. **Most of `um` is importable as a library, but it exits the process on errors.** Every module routes failures through `um.common.die()` → `sys.exit()` (`um/common.py:78`). Several commands print text and give no structured return (`publish.check` prints and returns an exit code; `backup.restore` prints and requires `yes=True`). The Studio adapter must either catch `SystemExit` and capture stdout, or get small upstream changes that add structured results. Recommendation: **wrap first, upstream later** (§7).
 3. **Cloud generation is wired into every agent config and into the core skill loop.** The fal MCP server is pre-registered in seven config files. `mod-any-game` step 6 tells agents to "generate with `um fal`". Nothing *requires* `FAL_KEY` for any non-fal command: `um scan/win/backup/kb/sprite/render3d/publish/comfy/video` all work without it, and CI runs every group's `--help` without a key. Isolation is a config and instruction problem, not a code-surgery problem (§5, input to 0.2).
 4. **Recon has three gaps that matter for the Minecraft × L4D2 slice.** VAC is not detected (it isn't file-based). Minecraft Java installs from the official launcher are not discovered by `um scan --list`. No game **build version** is reported for Source or Minecraft. Version fingerprinting (§42, §47, §48) needs all three (§9).
@@ -41,7 +40,7 @@ Entry point `um/cli.py` imports all ten groups at start-up (`GROUPS`, line 10). 
 | `scan` (`um/scan.py`, 758 lines) | `scan <game>`, `--list`, `--json` | `all_games()`, `resolve_game()`, `scan(query) -> dict` (engine, confidence, evidence, anti-cheat, loaders, mod folders, saves, exes, ranked routes, warnings, playbook path) | all (Steam/Epic/Xbox discovery on Win/WSL/Linux/macOS) | none | **wrap** + **adapt** (gaps §9) |
 | `win` (`um/win.py`, 534) | `setup`, `ps`, `kill <pid>`, `launch`, `shot`, `record`, `drive`, `reg get/set` | functions shell out to `um/ps1/*.ps1` and ffmpeg | Windows / WSL only (dies elsewhere, line 44) | `setup` downloads ffmpeg from GitHub (SHA-256 checked) | **wrap** |
 | `backup` (`um/backup.py`, 169) | `create`, `list`, `diff`, `restore` | `create() -> Path`, `snapshots()`, `diff() -> dict`, `restore()` (prints; needs `yes`; auto pre-restore snapshot) | all | none | **wrap** (save-data safety, §53). Not suitable as the *project* versioning engine (zip snapshots of folders, sha1 manifests) |
-| `kb` (`um/kb.py`, 484) | `search`, `show`, `new`, `check`, `index`, `sync`, `pr` | `resolve_root()`, `search(root, terms, game, engine, route) -> list[dict]`, `check_note()`, `new_note()`, `build_index()`; `knowledge/index.json` is a machine-readable index (70 entries @ fork HEAD) | all | `sync` reads GitHub (`UM_KB_REPO`, default `rehan-remade/universal-modder`); `pr` pushes a branch and opens a PR | **wrap** (`search`/`show`/`check`/`new`); `pr` behind a confirmation boundary (§89) |
+| `kb` (`um/kb.py`, 484) | `search`, `show`, `new`, `check`, `index`, `sync`, `pr` | `resolve_root()`, `search(root, terms, game, engine, route) -> list[dict]`, `check_note()`, `new_note()`, `build_index()`; `knowledge/index.json` is a machine-readable index (74 entries) | all | `sync` reads GitHub (`UM_KB_REPO`, default `rehan-remade/universal-modder`); `pr` pushes a branch and opens a PR | **wrap** (`search`/`show`/`check`/`new`); `pr` behind a confirmation boundary (§89) |
 | `publish` (`um/publish.py`, 127) | `check <mod> [--game]` | `check() -> int` (prints FAIL/WARN lines; no structured result) | all | none | **adapt** (needs a structured result for the package builder, Epic 10) |
 | `sprite` (`um/sprite.py`, 447) | cutout, trim, fit, pixelate, outline, palette, sheet, slice, frames, team mask, seamless, info… | pure Pillow/numpy functions | all | none | **reuse as-is** (asset pipeline, §64) |
 | `render3d` (`um/render3d.py` + `um/blender/render_sprites.py`) | render a GLB to sprite frames from a game camera preset | `render()` shells out to Blender | all (needs Blender) | none | **reuse as-is** |
@@ -82,7 +81,7 @@ Shared helpers in `um/common.py`: WSL↔Windows path mapping (`to_win`, `to_posi
 
 ### 2.5 Knowledge base (`knowledge/`)
 
-- 70 notes at fork HEAD (74 upstream), with a schema enforced by `um kb check` (front matter: `kind, title, game, engine, route, status, date, agents`; required sections setup/route/verification/gotchas; no secrets, no pasted decompiles, size caps). The `route` vocabulary (`data | asset-only | loader-api | managed-patch | native-hook | reimplementation | decomp-recomp | passthrough | emulator | other`) overlaps the brief's strategy list but is **not the same set** (§8).
+- 74 notes, with a schema enforced by `um kb check` (front matter: `kind, title, game, engine, route, status, date, agents`; required sections setup/route/verification/gotchas; no secrets, no pasted decompiles, size caps). The `route` vocabulary (`data | asset-only | loader-api | managed-patch | native-hook | reimplementation | decomp-recomp | passthrough | emulator | other`) overlaps the brief's strategy list but is **not the same set** (§8).
 - `knowledge/index.json` is machine-readable, which suits the context packer (Epic 4.1).
 - Directly relevant notes: `games/portal-2/portalcraft-minecraft-inside-portal-2.md`, `games/gta-v/minecraft-passthrough.md`, `games/left-4-dead/left-4-dead-infected-and-tank-in-minecraft.md`, `games/minecraft/bloons-td-6-in-minecraft.md` (headless guest sim, Pattern 5), `techniques/oracles-how-agents-know-a-mod-works.md`, `techniques/reading-source-engine-models-and-animations.md`, `techniques/driving-real-games-safely.md`.
 - **Class: wrap** (read) and **wrap behind confirmation** (write, PR).
@@ -222,7 +221,7 @@ Grouped by the epic that owns it:
 | L4D2 has no runtime nav-mesh blocking that rebuilds around arbitrary spawned blocks | medium | high (§125 requires "zombie navigation responds") | Epic 7.0 recon is a gate. Candidates to verify: `func_nav_blocker` / nav-blocking entities and VScript nav APIs on a listen server. Record the result in the KB; mark Unsupported honestly if it fails (§38) |
 | fal MCP still loaded in Claude sessions Studio launches | high | medium (cost and noise, violates §97) | ADR 0.5 picks the invocation mode with explicit MCP and skill control; add a test that a Studio-launched session lists no fal tools |
 | `die()` / `sys.exit` inside the long-running core | high if imported | high (core crashes) | subprocess boundary first; upstream `UmError` later |
-| Upstream drift (fork is already 5 behind) | certain | low today | ADR 0.3: Studio code in separate paths; fork-specific changes listed in one file; regular fast-forward |
+| Upstream drift (the fork fell 5 commits behind within a day) | certain | low today | ADR 0.3: Studio code in separate paths; fork-specific changes listed in one file; regular fast-forward |
 | Skill-copy test and publish check catch Studio files unexpectedly | medium | low | keep Studio skills (if any) in the same `skills/` → copies convention, or outside it entirely (ADR 0.3) |
 | VAC: a modded L4D2 joins a secured server | low (with gating) | severe (account ban) | the L4D2 adapter always launches with `-insecure`; the launcher refuses otherwise; scan gains a VAC/online flag |
 | Minecraft version-triple lock breaks shared projects | high over time | medium | the manifest records the exact MC + loader + API triple; the importer checks it (Epic 10) |
@@ -239,3 +238,33 @@ Grouped by the epic that owns it:
 - **#4 (0.4, stack):** the toolkit is Python 3.10+ with `uv`; Windows tooling is PowerShell 5.1 + C# 5. A Python core can reuse `um` directly. The UI choice is independent of that.
 - **#5 (0.5, invoking Claude):** sessions must load `um` on PATH (the existing SessionStart hook does this), the mashup and recon skills and the playbooks, but not fal. Confirmation boundaries must be enforced by the app (§7 table), not left to skill prose.
 - **#6 (0.6, graph format):** PyYAML is already a dependency. Two route vocabularies need a mapping (§8.3). Stable dotted IDs match the KB's existing `game` and `engine` keys (`um scan` engine keys: `source`, `java`, `creation`, …).
+
+---
+
+## 12. Decisions from review (2026-10-07)
+
+| # | Decision | Effect |
+|---|---|---|
+| D1 | **Don't assume more exists than the code shows; build what is needed.** | Runtime pieces the brief attributes to the repository (bridge/IPC, watchdog, launcher, process manager, strategy implementations beyond docs) are planned as net-new Studio work, using the examples only as reference designs. |
+| D2 | **Call the toolkit as a separate command-line process.** | `UniversalModderAdapter` (Epic 3.1) runs `bin/um …` as a subprocess, using `--json` where it exists and parsing stdout or exit codes where it doesn't. Studio never imports `um` in-process, so `die()`/`sys.exit()` can't take the core down. Upstream structured-output PRs (e.g. `publish check --json`) are optional improvements, not prerequisites. |
+| D3 | **fal: isolate through configuration (§5), no upstream deletion.** | Studio-launched Claude sessions get an MCP config without fal and a skill set without `fal-assets`; the adapter doesn't expose `um fal`. Details in issue 0.2. |
+| D4 | **Any modded Valve/Steam game is launched with `-insecure`, always.** | The launcher adds `-insecure` for every Source / Source 2 game and **refuses to launch** a modded Valve game without it; it isn't a user-toggleable setting. This covers L4D2. `-insecure` is a Valve-engine flag. Steam games on other engines don't have it; for those, the existing rules apply (offline, single-player or a user-run server; never inject past anti-cheat). |
+| D5 | **Minecraft Java is discovered from the official launcher folder** (`%APPDATA%\.minecraft` on Windows), which may hold several installed versions. | Studio discovery reads `launcher_profiles.json` (installations: name, `lastVersionId`, `gameDir`) and `versions/<id>/<id>.json`, and lists each version or installation as a separate selectable donor. One project pins one exact version + loader + API triple. |
+| D6 | **Game build versions are read locally first; AI is only a fallback.** | See below. |
+
+### How build versions are read locally (D6)
+
+Everything below is a file read on the user's machine. No network and no model call.
+
+| Source | Where | Gives | Status in `um` today |
+|---|---|---|---|
+| Steam games (L4D2, Skyrim, Portal 2…) | `steamapps/appmanifest_<appid>.acf` | `buildid` (Steam's build number for the installed depot), `LastUpdated` | the file is already parsed by `steam_games()` (`um/scan.py:134`), but `buildid` is dropped. A one-field addition |
+| Source 1 games | `<game>/<mod>/steam.inf` (L4D2: `left4dead2/steam.inf`) | `PatchVersion`, `ClientVersion`, `ServerVersion` | not read; to verify on the user's L4D2 install in Epic 3 |
+| Windows executables (any engine) | the PE `VERSIONINFO` resource of the main exe | `FileVersion`, `ProductVersion` | `pe_info()` reads only arch and managed flag; add a version-resource read |
+| Epic Games Store | `ProgramData/Epic/EpicGamesLauncher/Data/Manifests/*.item` | `AppVersionString` | already parsed by `epic_games()`, field dropped |
+| Xbox / Game Pass | `<install>/appxmanifest.xml` | `<Identity Version=…>` | not read |
+| Minecraft Java | `.minecraft/versions/<id>/<id>.json` | `id` (e.g. `26.3`, or `fabric-loader-0.19.5-26.3`), `type`, `releaseTime`, `inheritsFrom` (base game version for loader profiles) | not read |
+| Minecraft mods | `<gameDir>/mods/*.jar` → `fabric.mod.json` / `META-INF/neoforge.mods.toml` | loader and API versions (the version triple) | not read |
+| Anything else | SHA-256 of the main executable | an exact fingerprint even with no readable version | not computed |
+
+**AI fallback:** when only a hash or an opaque build number is available, Claude may map it to a human-readable version name (e.g. "Steam build 1234567 = the 2.2.x update"). It records the mapping as an **estimate** with its source. A fingerprint mismatch is always decided from the local data, never from the AI's guess. These reads land in Epic 3.2 (recon → graph) as Studio code, plus optional upstream PRs to `um scan` for the Steam and Epic fields it already parses.
