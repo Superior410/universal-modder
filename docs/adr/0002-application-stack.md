@@ -1,6 +1,6 @@
 # ADR 0002: Application stack
 
-- **Status:** Proposed. Accepted at the Epic 0 exit gate **subject to the spike in §4**.
+- **Status:** Accepted **for validation** (2026-10-07). The core decision stands. The shell choice is settled by the §4 test, and passing it doesn't lock the architecture: later evidence can reopen this ADR.
 - **Issue:** #4 (Epic 0, task 0.4)
 - **Brief:** §81 (priorities, in order: maintainability, graph performance, Windows integration, Claude orchestration, local process control, extensibility), §82, §26, §117. **Audit:** D2, D7.
 
@@ -27,7 +27,7 @@
 
 ## 2. Options for the desktop shell
 
-| | Tauri 2 + React (recommended) | Electron + React | PySide6 (Qt) | Plain browser tab |
+| | Tauri 2 + React | Electron + React (default if both pass §4) | PySide6 (Qt) | Plain browser tab |
 |---|---|---|---|---|
 | Windows integration | native window on WebView2 (preinstalled on Windows 11); sidecar processes; native dialogs | Chromium bundled, mature | native | none: no file dialogs, no tray, not a desktop app (§81 rules it out) |
 | Installer size / memory | small | large (bundles Chromium) | medium | n/a |
@@ -36,11 +36,11 @@
 | Build toolchain | Node + Rust (the developer installs Rust; users don't) | Node | Python only | Node |
 | Process control | delegated to the Python core either way | delegated | in-process | delegated |
 
-**Shell decision: Tauri 2 + React + TypeScript.**
-- The **Python core runs as a Tauri sidecar**. Tauri starts it, passes the token, and kills it on exit.
+**Shell decision: React + TypeScript UI. The host (Tauri 2 or Electron) is chosen by the §4 test.**
+- The **Python core runs as a child process of the shell** (a sidecar in Tauri, a child process in Electron). The shell starts it, passes the token, and kills it on exit.
 - React Flow is the editor for the beginner and technical views. A canvas/WebGL overview (Cytoscape.js) covers whole-project views if React Flow can't hold the target size.
 
-Electron is the fallback if Tauri's sidecar or WebView2 cause problems on the user's machine. The UI code is the same React app, so switching costs only the shell layer.
+**Rust rule (user decision):** Rust is allowed only as a build-only or native helper, and only if the test shows a concrete need. It is never part of the core. Tauri's shell is built with Rust, so: if Electron and Tauri both pass §4, **Electron is chosen** (no Rust anywhere). Tauri is chosen only if the test records a concrete advantage Electron can't match (e.g. installer size or memory on the user's PC, or sidecar process handling). The UI code is the same React app either way, so switching costs only the shell layer.
 
 ## 3. Why not a single Python desktop app (PySide6)
 
@@ -51,7 +51,7 @@ It has one language and no IPC, and Qt's scene graph is fast. It loses on §81 #
 | Check | Pass |
 |---|---|
 | React Flow with 3,000 nodes / 6,000 edges from a fixture graph, `onlyRenderVisibleElements` on | pan/zoom stays smooth on the user's PC; selecting a node updates the inspector in under 100 ms |
-| Tauri sidecar: start the Python core, token handshake, kill Studio from Task Manager | the core and every child process exit (Job Object) |
+| Shell host, run for **both** Tauri 2 and Electron: start the Python core, token handshake, kill Studio from Task Manager | the core and every child process exit (Job Object); record installer size, idle memory and start time for each |
 | Stream a `claude -p --output-format stream-json` run through the core to the UI | events appear live; cancelling sends SIGINT-equivalent and the run ends cleanly |
 | Installer on the user's Windows 11 | installs per-user without admin; WebView2 present |
 
@@ -60,17 +60,18 @@ If React Flow fails the size test, the technical view switches to Cytoscape.js f
 ## Decision
 
 - **Core:** Python 3.12 (`uv`), headless, with a `mashup` CLI and a localhost WebSocket API (token-protected).
-- **Shell:** Tauri 2 + React + TypeScript, the core as a sidecar.
+- **Shell:** React + TypeScript, hosted by Electron unless the §4 test shows a concrete need for Tauri 2 (the only route by which Rust would enter, build-only). The core runs as a child process of the shell in both cases.
 - **Graph UI:** React Flow, with Cytoscape.js as the large-graph fallback.
 - **Process safety:** Windows Job Objects in the core, so children never outlive Studio.
 
 ## Consequences
 
 - Epic 1 and Epic 2 are pure Python, testable on Linux CI and Windows CI.
-- Epic 5 adds a Node + Rust toolchain for developers. Users get a normal Windows installer.
+- Epic 5 adds a Node toolchain for developers (plus Rust only if Tauri is chosen). Users get a normal per-user Windows installer.
+- **Code signing** is not implemented in Epic 1. The installer and update layout keep it addable later: one signing step in the release script, stable publisher name, no self-modifying binaries.
 - Every UI action maps to a core API call that is also a CLI command. This makes the UI scriptable and testable, and matches §73 (graph edit and natural language produce the same state).
 
-## Open questions for the user
+## Resolved questions (2026-10-07)
 
-1. Any objection to Rust being needed for **building** the shell? Users never need it.
-2. Should the per-user installer target your PC only for now, or should code signing be planned early for sharing (Epic 10)?
+1. Rust: only as a build-only/native helper when the test shows a concrete need; never in the core.
+2. Code signing: not in Epic 1; keep the release layout compatible with adding it later.
